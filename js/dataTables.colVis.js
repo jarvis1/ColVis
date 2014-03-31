@@ -351,13 +351,33 @@ ColVis.prototype = {
 		var groups = this.s.aoGroups;
 		var button;
 
+    var needOnesChecked = {};
+    var needOne;
 		for ( var i=0, ien=buttons.length ; i<ien ; i++ ) {
 			button = buttons[i];
 
 			if ( button.__columnIdx !== undefined ) {
 				$('input', button).prop( 'checked', columns[ button.__columnIdx ].bVisible );
-			}
-		}
+
+        needOne = columns[button.__columnIdx].sNeedOne;
+        if (needOne !== undefined && columns[button.__columnIdx].bVisible) {
+          if (needOnesChecked[needOne] === undefined) {
+            needOnesChecked[needOne] = [];
+			    }
+
+          needOnesChecked[needOne].push(button);
+		    }
+      }
+    }
+
+
+    for (var key in needOnesChecked) {
+      if (needOnesChecked[key].length == 1) {
+        $(needOnesChecked[key][0]).addClass("need_one_last_one");
+        $('input', needOnesChecked[key][0]).prop("disabled", true);
+      }
+    }
+
 
 		var allVisible = function ( columnIndeces ) {
 			for ( var k=0, kLen=columnIndeces.length ; k<kLen ; k++ )
@@ -588,50 +608,95 @@ ColVis.prototype = {
 			column.sTitle :
 			this.s.fnLabel( i, column.sTitle, column.nTh );
 
-		return $(
-				'<li '+(dt.bJUI ? 'class="ui-button ui-state-default"' : '')+'>'+
-					'<label>'+
-						'<input type="checkbox" />'+
-						'<span>'+title+'</span>'+
-					'</label>'+
-				'</li>'
-			)
-			.click( function (e) {
-				var showHide = !$('input', this).is(":checked");
-				if (  e.target.nodeName.toLowerCase() !== "li" )
-				{
-					showHide = ! showHide;
-				}
+    var $li = $(
+      '<li ' + (dt.bJUI ? 'class="ui-button ui-state-default"' : '') + (column.sNeedOne !== undefined ? ' need_one="' + column.sNeedOne + '" ' : '') + '>' +
+        '<input type="checkbox" />'+
+        '<span>'+title+'</span>'+
+      '</li>'
+    )
+    .click( function (e) {
+      if (e.target.nodeName.toLowerCase() != 'input') {
+        $(this).find('input').prop('checked', !$(this).find('input').prop('checked'));
+        $(this).find('input').triggerHandler('click');
+      }
+    });
 
-				/* Need to consider the case where the initialiser created more than one table - change the
-				 * API index that DataTables is using
-				 */
-				var oldIndex = $.fn.dataTableExt.iApiIndex;
-				$.fn.dataTableExt.iApiIndex = that._fnDataTablesApiIndex.call(that);
 
-				// Optimisation for server-side processing when scrolling - don't do a full redraw
-				if ( dt.oFeatures.bServerSide )
-				{
-					that.s.dt.oInstance.fnSetColumnVis( i, showHide, false );
-					that.s.dt.oInstance.fnAdjustColumnSizing( false );
-					if (dt.oScroll.sX !== "" || dt.oScroll.sY !== "" )
-					{
-						that.s.dt.oInstance.oApi._fnScrollDraw( that.s.dt );
-					}
-					that._fnDrawCallback();
-				}
-				else
-				{
-					that.s.dt.oInstance.fnSetColumnVis( i, showHide );
-				}
+    $li.find('input').click(function (e) {
+      var showHide = $(this).is(":checked");
+      //				if (  e.target.nodeName.toLowerCase() !== "li" )
+      //				{
+      //					showHide = ! showHide;
+      //				}
 
-				$.fn.dataTableExt.iApiIndex = oldIndex; /* Restore */
+      if ($(this).closest('li').attr('need_one')) {
+        var needOneCheckedCount = $(this).closest('ul').find("li[need_one] input:checked").length;
+        if (e.target.nodeName.toLowerCase() == "li") {
+          // In chrome the checked state for li click is precheck state
+          if (showHide) {
+            needOneCheckedCount++;
+          }
+          else {
+            needOneCheckedCount--;
+          }
+        }
 
-				if ( e.target.nodeName.toLowerCase() === 'input' && that.s.fnStateChange !== null )
-				{
-					that.s.fnStateChange.call( that, i, showHide );
-				}
-			} )[0];
+        if (!showHide) {
+          // hiding
+          if (needOneCheckedCount == 0) {
+            // last one clicked (non-input clicked which triggered the input click handler) so need to reset it back to checked
+            $(this).prop('checked', true);
+
+            return false;
+          }
+          else if (needOneCheckedCount == 1) {
+            var $lastOneLI = $(this).closest('ul').find("li[need_one] input:checked").closest('li');
+            $lastOneLI.addClass('need_one_last_one');
+            $lastOneLI.find("input").attr('disabled', true);
+          }
+        }
+        else {
+          var $needOneLastOne = $(this).closest('ul').find("li.need_one_last_one");
+          if ($needOneLastOne.length) {
+            $needOneLastOne.removeClass("need_one_last_one");
+            $needOneLastOne.find("input").attr('disabled', false);
+          }
+        }
+      }
+
+      /* Need to consider the case where the initialiser created more than one table - change the
+       * API index that DataTables is using
+       */
+      var oldIndex = $.fn.dataTableExt.iApiIndex;
+      $.fn.dataTableExt.iApiIndex = that._fnDataTablesApiIndex.call(that);
+
+      // Optimisation for server-side processing when scrolling - don't do a full redraw
+      if ( dt.oFeatures.bServerSide )
+      {
+        that.s.dt.oInstance.fnSetColumnVis( i, showHide, false );
+        that.s.dt.oInstance.fnAdjustColumnSizing( false );
+        if (dt.oScroll.sX !== "" || dt.oScroll.sY !== "" )
+        {
+          that.s.dt.oInstance.oApi._fnScrollDraw( that.s.dt );
+        }
+        that._fnDrawCallback();
+      }
+      else
+      {
+        that.s.dt.oInstance.fnSetColumnVis( i, showHide );
+      }
+
+      $.fn.dataTableExt.iApiIndex = oldIndex; /* Restore */
+
+      if ( e.target.nodeName.toLowerCase() === 'input' && that.s.fnStateChange !== null )
+      {
+        that.s.fnStateChange.call( that, i, showHide );
+      }
+
+      e.stopPropagation();
+    });
+
+    return $li[0];
 	},
 
 
@@ -749,10 +814,9 @@ ColVis.prototype = {
 		var iDivX = parseInt(oPos.left, 10);
 		var iDivY = parseInt(oPos.top + $(this.dom.button).outerHeight(), 10);
 
-		if ( ! this.s.bCssPosition )
-		{
-			nHidden.style.top = iDivY+"px";
-			nHidden.style.left = iDivX+"px";
+    if (!this.s.bCssPosition) {
+      nHidden.style.top = (iDivY + parent.$('#infopanel').offset().top) + "px";
+      nHidden.style.left = (iDivX + parent.$('#infopanel').offset().left) + "px";
 		}
 
 		$(nHidden).css( {
@@ -762,6 +826,7 @@ ColVis.prototype = {
 
 		nBackground.style.bottom ='0px';
 		nBackground.style.right = '0px';
+    nBackground.style.height = $(parent.document).height();
 
 		var oStyle = this.dom.catcher.style;
 		oStyle.height = $(this.dom.button).outerHeight()+"px";
@@ -769,15 +834,15 @@ ColVis.prototype = {
 		oStyle.top = oPos.top+"px";
 		oStyle.left = iDivX+"px";
 
-		document.body.appendChild( nBackground );
-		document.body.appendChild( nHidden );
+    parent.document.body.appendChild(nBackground);
+    parent.document.body.appendChild(nHidden);
 		document.body.appendChild( this.dom.catcher );
 
 		/* This results in a very small delay for the end user but it allows the animation to be
 		 * much smoother. If you don't want the animation, then the setTimeout can be removed
 		 */
 		$(nHidden).animate({"opacity": 1}, that.s.iOverlayFade);
-		$(nBackground).animate({"opacity": 0.1}, that.s.iOverlayFade, 'linear', function () {
+    $(nBackground).animate({ "opacity": 0.2 }, that.s.iOverlayFade, 'linear', function () {
 			/* In IE6 if you set the checked attribute of a hidden checkbox, then this is not visually
 			 * reflected. As such, we need to do it here, once it is visible. Unbelievable.
 			 */
@@ -788,8 +853,8 @@ ColVis.prototype = {
 		});
 
 		/* Visual corrections to try and keep the collection visible */
-		if ( !this.s.bCssPosition )
-		{
+        /*
+         if (!this.s.bCssPosition) {
 			iLeft = ( this.s.sAlign=="left" ) ?
 				iDivX :
 				iDivX - $(nHidden).outerWidth() + $(this.dom.button).outerWidth();
@@ -805,6 +870,7 @@ ColVis.prototype = {
 				nHidden.style.left = (iDocWidth-iDivWidth)+"px";
 			}
 		}
+         */
 
 		this.s.hidden = false;
 	},
@@ -829,7 +895,7 @@ ColVis.prototype = {
 			} );
 
 			$(this.dom.background).animate({"opacity": 0}, that.s.iOverlayFade, function (e) {
-				document.body.removeChild( that.dom.background );
+        parent.document.body.removeChild(that.dom.background);
 				document.body.removeChild( that.dom.catcher );
 			} );
 
