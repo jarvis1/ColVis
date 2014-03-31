@@ -832,6 +832,9 @@ ColVis.prototype = {
 				document.body.removeChild( that.dom.background );
 				document.body.removeChild( that.dom.catcher );
 			} );
+
+      // trigger state save
+      this.s.dt.oApi._fnSaveState( this.s.dt, "ColVis._fnCollectionHide" );
 		}
 	},
 
